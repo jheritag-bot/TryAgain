@@ -1,8 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Plus, Trash2, Pencil, Calendar, Lock } from "lucide-react";
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
 
 
 /***********************
@@ -90,6 +88,9 @@ import {
   signInWithEmailAndPassword,
   onAuthStateChanged
 } from "firebase/auth";
+
+
+import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBVO4pKCfYMFiNz9rzvBBzks5PGL3Vw32M",
