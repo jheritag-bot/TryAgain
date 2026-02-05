@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Plus, Trash2, Pencil, Calendar, Lock } from "lucide-react";
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+
 
 /***********************
  LIGHTWEIGHT UI COMPONENTS
@@ -89,12 +92,13 @@ import {
 } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_BUCKET",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyBVO4pKCfYMFiNz9rzvBBzks5PGL3Vw32M",
+  authDomain: "choretracker-ddf17.firebaseapp.com",
+  projectId: "choretracker-ddf17",
+  storageBucket: "choretracker-ddf17.firebasestorage.app",
+  messagingSenderId: "179468728865",
+  appId: "1:179468728865:web:ca4c5762a08adc7dc0c160",
+  measurementId: "G-D0XCC9NKJE"
 };
 
 const app = initializeApp(firebaseConfig);
