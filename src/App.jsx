@@ -2,22 +2,18 @@ import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Plus, Trash2, Pencil, Calendar, Lock, LogOut, 
-  CheckCircle2, Circle, Moon, Sun, Clock, User as UserIcon, Settings, Check, X
+  CheckCircle2, Circle, Moon, Sun, Clock, User as UserIcon, Settings
 } from "lucide-react";
 
 /***********************
   PREMIUM UI COMPONENTS
 ***********************/
 
-const GlassCard = ({ children, className = "", darkMode = false }) => (
+const GlassCard = ({ children, className = "" }) => (
   <motion.div 
     initial={{ opacity: 0, y: 10 }}
     animate={{ opacity: 1, y: 0 }}
-    className={`backdrop-blur-md border rounded-3xl transition-all duration-300 ${
-      darkMode 
-        ? "bg-slate-900/70 border-slate-700 text-white" 
-        : "bg-white/80 border-slate-200 shadow-sm text-slate-900"
-    } ${className}`}
+    className={`bg-white/80 backdrop-blur-md border border-slate-200 shadow-sm rounded-3xl ${className}`}
   >
     {children}
   </motion.div>
@@ -26,12 +22,16 @@ const GlassCard = ({ children, className = "", darkMode = false }) => (
 const Button = ({ children, variant = "primary", size = "md", className = "", ...props }) => {
   const variants = {
     primary: "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100",
-    secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700",
-    outline: "border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800",
-    destructive: "bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20 dark:text-rose-400",
+    secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200",
+    outline: "border border-slate-200 text-slate-600 hover:bg-slate-50",
+    destructive: "bg-rose-50 text-rose-600 hover:bg-rose-100",
   };
   
-  const sizes = { md: "px-5 py-2.5 text-sm", sm: "px-3 py-1.5 text-xs", icon: "p-2" };
+  const sizes = {
+    md: "px-5 py-2.5 text-sm",
+    sm: "px-3 py-1.5 text-xs",
+    icon: "p-2",
+  };
 
   return (
     <button 
@@ -45,7 +45,7 @@ const Button = ({ children, variant = "primary", size = "md", className = "", ..
 
 const Input = (props) => (
   <input 
-    className="bg-slate-50 dark:bg-slate-900/50 border-none ring-1 ring-slate-200 dark:ring-slate-700 focus:ring-2 focus:ring-indigo-500 rounded-2xl px-4 py-2.5 w-full outline-none transition-all placeholder:text-slate-400 dark:text-white" 
+    className="bg-slate-50 border-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-500 rounded-2xl px-4 py-2.5 w-full outline-none transition-all placeholder:text-slate-400" 
     {...props} 
   />
 );
@@ -54,10 +54,7 @@ const Input = (props) => (
   FIREBASE CONFIG
 ***********************/
 import { initializeApp } from "firebase/app";
-import { 
-  getFirestore, collection, addDoc, updateDoc, deleteDoc, 
-  doc, onSnapshot, query, where, setDoc, getDoc, writeBatch, getDocs
-} from "firebase/firestore";
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where, setDoc, getDocs } from "firebase/firestore";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 
 const firebaseConfig = {
@@ -77,298 +74,239 @@ const auth = getAuth(app);
   UTILITIES
 ***********************/
 const MS_PER_DAY = 86400000;
-const nextDueDate = (days) => {
-    const d = new Date();
-    d.setHours(23, 59, 59, 999);
-    return d.getTime() + (days * MS_PER_DAY);
+const nextDueDate = (days) => Date.now() + days * MS_PER_DAY;
+const formatCountdown = (ts) => {
+  const diff = ts - Date.now();
+  if (diff <= 0) return "Overdue";
+  const days = Math.floor(diff / MS_PER_DAY);
+  return days > 0 ? `${days}d left` : "Due today";
 };
 
-const formatCountdown = (ts) => {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const due = new Date(ts);
-  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
-  
-  const diff = dueDay - today;
-  if (diff < 0) return "Overdue";
-  if (diff === 0) return "Due Today";
-  if (diff === MS_PER_DAY) return "Due Tomorrow";
-  return `Due in ${Math.round(diff / MS_PER_DAY)}d`;
-};
+// Hardcoded Owners
+const OWNERS = ["John", "Jennifer"];
 
 export default function HomeOpsUltra() {
-  const [darkMode, setDarkMode] = useState(false);
   const [chores, setChores] = useState([]);
   const [rooms, setRooms] = useState([]);
-  const [user, setUser] = useState(null);
-  
-  // Filters
-  const [roomFilter, setRoomFilter] = useState("All");
-  const [ownerFilter, setOwnerFilter] = useState("All");
-  const [dateFilter, setDateFilter] = useState("All"); // All, Today, Week
+  const [filter, setFilter] = useState("All");
   const [tab, setTab] = useState("active");
-
-  // Room Editing State
-  const [editingRoom, setEditingRoom] = useState(null);
-  const [roomEditValue, setRoomEditValue] = useState("");
-
+  const [user, setUser] = useState(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [newRoomName, setNewRoomName] = useState("");
-  const [isEditingChore, setIsEditingChore] = useState(null);
-  const [newChore, setNewChore] = useState({ name: "", room: "", assignedTo: "", dueInDays: 1 });
+  const [newRoom, setNewRoom] = useState("");
+  const [isEditing, setIsEditing] = useState(null);
+  
+  // Default values set to hardcoded Owners
+  const [newChore, setNewChore] = useState({ name: "", room: "", assignedTo: OWNERS[0], dueInDays: 7 });
 
   useEffect(() => {
-    if (darkMode) document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
-  }, [darkMode]);
-
-  useEffect(() => {
-    return onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        const userSnap = await getDoc(doc(db, "users", u.uid));
-        if (userSnap.exists() && userSnap.data().darkMode !== undefined) setDarkMode(userSnap.data().darkMode);
-      }
-    });
+    return onAuthStateChanged(auth, (u) => setUser(u));
   }, []);
 
   useEffect(() => {
     if (!user) return;
-    const unsubRooms = onSnapshot(query(collection(db, "rooms"), where("userId", "==", user.uid)), (snap) => {
-      setRooms(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const qRooms = query(collection(db, "rooms"), where("userId", "==", user.uid));
+    const unsubRooms = onSnapshot(qRooms, (snap) => {
+      const r = snap.docs.map(d => d.data().name);
+      setRooms(r);
+      // Auto-select the first room for new chores if one isn't selected
+      if (r.length > 0 && !newChore.room) setNewChore(p => ({ ...p, room: r[0] }));
     });
-    const unsubChores = onSnapshot(query(collection(db, "chores"), where("userId", "==", user.uid)), (snap) => {
+
+    const qChores = query(collection(db, "chores"), where("userId", "==", user.uid));
+    const unsubChores = onSnapshot(qChores, (snap) => {
       setChores(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
+
     return () => { unsubRooms(); unsubChores(); };
   }, [user]);
 
-  const toggleDarkMode = async () => {
-    setDarkMode(!darkMode);
-    if (user) await setDoc(doc(db, "users", user.uid), { darkMode: !darkMode }, { merge: true });
-  };
-
-  // ROOM LOGIC: Rename room and all associated chores
-  const handleRenameRoom = async (roomObj) => {
-    if (!roomEditValue.trim() || roomEditValue === roomObj.name) {
-        setEditingRoom(null);
-        return;
-    }
-    const batch = writeBatch(db);
-    batch.update(doc(db, "rooms", roomObj.id), { name: roomEditValue });
-    
-    const choresToUpdate = chores.filter(c => c.room === roomObj.name);
-    choresToUpdate.forEach(c => {
-        batch.update(doc(db, "chores", c.id), { room: roomEditValue });
+  const toggleComplete = async (chore) => {
+    const isNowDone = !chore.completed;
+    await updateDoc(doc(db, "chores", chore.id), {
+      completed: isNowDone,
+      completedAt: isNowDone ? Date.now() : null,
+      dueDate: isNowDone ? nextDueDate(chore.dueInDays) : chore.dueDate
     });
-    
-    await batch.commit();
-    setEditingRoom(null);
   };
 
   const addChore = async () => {
-    if (!newChore.name.trim() || !newChore.room.trim()) return;
-    
-    // Auto-add room if it doesn't exist
-    if (!rooms.some(r => r.name.toLowerCase() === newChore.room.toLowerCase())) {
-        await addDoc(collection(db, "rooms"), { name: newChore.room, userId: user.uid });
-    }
-
-    const payload = { 
-        ...newChore, 
-        userId: user.uid, 
-        completed: false, 
-        dueDate: nextDueDate(parseInt(newChore.dueInDays)) 
-    };
-
-    if (isEditingChore) {
-        await updateDoc(doc(db, "chores", isEditingChore), payload);
-        setIsEditingChore(null);
+    if (!newChore.name.trim() || !newChore.room) return;
+    const payload = { ...newChore, userId: user.uid, completed: false, dueDate: nextDueDate(newChore.dueInDays) };
+    if (isEditing) {
+        await updateDoc(doc(db, "chores", isEditing), payload);
+        setIsEditing(null);
     } else {
         await addDoc(collection(db, "chores"), payload);
     }
-    setNewChore({ name: "", room: "", assignedTo: "", dueInDays: 1 });
+    setNewChore({ ...newChore, name: "" });
   };
 
-  // ADVANCED FILTERING LOGIC
+  const completionRate = chores.length ? Math.round((chores.filter(c => c.completed).length / chores.length) * 100) : 0;
+
   const filteredChores = useMemo(() => {
-    const now = new Date();
-    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).getTime();
-    const weekEnd = todayEnd + (7 * MS_PER_DAY);
-
-    return chores.filter(c => {
-        const matchesTab = tab === "active" ? !c.completed : c.completed;
-        const matchesRoom = roomFilter === "All" || c.room === roomFilter;
-        const matchesOwner = ownerFilter === "All" || c.assignedTo === ownerFilter;
-        
-        let matchesDate = true;
-        if (dateFilter === "Today") matchesDate = c.dueDate <= todayEnd;
-        if (dateFilter === "Week") matchesDate = c.dueDate <= weekEnd;
-
-        return matchesTab && matchesRoom && matchesOwner && matchesDate;
-    });
-  }, [chores, roomFilter, ownerFilter, dateFilter, tab]);
-
-  // DAILY GOAL LOGIC
-  const dailyProgress = useMemo(() => {
-    const now = new Date();
-    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).getTime();
-    const todayTasks = chores.filter(c => c.dueDate <= todayEnd);
-    if (todayTasks.length === 0) return 0;
-    const completedToday = todayTasks.filter(c => c.completed).length;
-    return Math.round((completedToday / todayTasks.length) * 100);
-  }, [chores]);
-
-  // Extract unique owners for filter dropdown
-  const owners = useMemo(() => ["All", ...new Set(chores.map(c => c.assignedTo).filter(Boolean))], [chores]);
+    const base = tab === "active" ? chores.filter(c => !c.completed) : chores.filter(c => c.completed);
+    return filter === "All" ? base : base.filter(c => c.room === filter);
+  }, [chores, filter, tab]);
 
   if (!user) return (
-    <div className={`min-h-screen flex items-center justify-center p-6 ${darkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
-      <GlassCard darkMode={darkMode} className="w-full max-w-md p-8 text-center">
-        <Lock className="mx-auto mb-6 text-indigo-600" size={40} />
-        <h2 className="text-2xl font-bold mb-6">HomeOps Login</h2>
+    <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] p-6 font-sans">
+      <GlassCard className="w-full max-w-md p-8 text-center">
+        <div className="w-16 h-16 bg-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-indigo-200">
+          <Lock className="text-white" size={28} />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">Welcome Back</h2>
+        <p className="text-slate-500 mb-8">Manage your home operations with ease.</p>
         <div className="space-y-4">
-          <Input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
+          <Input placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} />
           <Input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
-          <Button onClick={() => signInWithEmailAndPassword(auth, email, password)} className="w-full">Enter Dashboard</Button>
+          <Button onClick={() => signInWithEmailAndPassword(auth, email, password)} className="w-full py-4">Sign In</Button>
         </div>
       </GlassCard>
     </div>
   );
 
   return (
-    <div className={`min-h-screen transition-colors duration-500 p-4 md:p-10 ${darkMode ? 'bg-slate-950 text-white' : 'bg-[#F8FAFC] text-slate-900'}`}>
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans p-4 md:p-10">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        <header className="flex justify-between items-center mb-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold">H</div>
+        {/* SIDEBAR / STATS */}
+        <div className="lg:col-span-4 space-y-6">
+          <header className="flex items-center gap-3 mb-8">
+            <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-100">H</div>
             <h1 className="text-xl font-extrabold tracking-tight">HomeOps<span className="text-indigo-600">Ultra</span></h1>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={toggleDarkMode} className={`p-2.5 rounded-2xl border ${darkMode ? 'bg-slate-900 border-slate-700 text-yellow-400' : 'bg-white border-slate-200'}`}>
-              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-            <Button variant="outline" size="icon" onClick={() => signOut(auth)}><LogOut size={20}/></Button>
-          </div>
-        </header>
+          </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <GlassCard className="p-6 bg-indigo-900 !text-white border-none shadow-indigo-200">
+            <p className="text-indigo-200 text-sm font-medium mb-1">Overall Progress</p>
+            <div className="flex items-end justify-between mb-4">
+                <h3 className="text-4xl font-bold">{completionRate}%</h3>
+                <p className="text-xs text-indigo-300">Daily Goal</p>
+            </div>
+            <div className="w-full h-2 bg-indigo-800 rounded-full overflow-hidden">
+                <motion.div initial={{ width: 0 }} animate={{ width: `${completionRate}%` }} className="h-full bg-white shadow-[0_0_15px_rgba(255,255,255,0.5)]" />
+            </div>
+          </GlassCard>
+
+          {/* Manage Rooms Section */}
+          <GlassCard className="p-6">
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Settings size={14}/> Manage Rooms
+            </h3>
+            <div className="flex gap-2 mb-4">
+                <Input placeholder="Room Name" value={newRoom} onChange={e => setNewRoom(e.target.value)} className="text-sm" />
+                <Button variant="secondary" onClick={async () => {
+                    if (!newRoom.trim()) return;
+                    await setDoc(doc(collection(db, "rooms")), { name: newRoom, userId: user.uid });
+                    setNewRoom("");
+                }}><Plus size={18}/></Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+                {rooms.map(r => (
+                    <span key={r} className="px-3 py-1 bg-slate-50 border border-slate-100 rounded-full text-xs font-medium text-slate-600">{r}</span>
+                ))}
+            </div>
+          </GlassCard>
           
-          {/* SIDEBAR */}
-          <div className="lg:col-span-4 space-y-6">
-            <GlassCard darkMode={darkMode} className={`p-6 border-none ${darkMode ? 'bg-indigo-500/10' : 'bg-indigo-900 !text-white'}`}>
-              <p className="opacity-70 text-sm font-bold uppercase tracking-widest mb-1">Today's Goal</p>
-              <h3 className="text-5xl font-black mb-4">{dailyProgress}%</h3>
-              <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
-                  <motion.div animate={{ width: `${dailyProgress}%` }} className="h-full bg-indigo-400 shadow-[0_0_15px_rgba(129,140,248,0.5)]" />
-              </div>
-              <p className="text-xs mt-3 opacity-60">Based on tasks due by midnight.</p>
-            </GlassCard>
+          <Button variant="outline" className="w-full py-3" onClick={() => signOut(auth)}>
+            <LogOut size={16}/> Logout
+          </Button>
+        </div>
 
-            <GlassCard darkMode={darkMode} className="p-6">
-              <h3 className="text-xs font-bold opacity-40 uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <Settings size={14}/> Household Rooms
-              </h3>
-              <div className="space-y-2">
-                  {rooms.map(r => (
-                      <div key={r.id} className="flex items-center justify-between group">
-                          {editingRoom === r.id ? (
-                              <div className="flex gap-1 w-full">
-                                  <Input size="sm" value={roomEditValue} onChange={e => setRoomEditValue(e.target.value)} autoFocus />
-                                  <Button size="icon" variant="primary" onClick={() => handleRenameRoom(r)}><Check size={14}/></Button>
-                                  <Button size="icon" variant="outline" onClick={() => setEditingRoom(null)}><X size={14}/></Button>
-                              </div>
-                          ) : (
-                              <>
-                                <span className={`text-sm font-medium ${roomFilter === r.name ? 'text-indigo-500' : ''}`}>{r.name}</span>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => {setEditingRoom(r.id); setRoomEditValue(r.name);}} className="p-1 hover:text-indigo-500"><Pencil size={12}/></button>
-                                    <button onClick={() => deleteDoc(doc(db, "rooms", r.id))} className="p-1 hover:text-rose-500"><Trash2 size={12}/></button>
-                                </div>
-                              </>
-                          )}
-                      </div>
-                  ))}
-              </div>
-            </GlassCard>
+        {/* MAIN DASHBOARD */}
+        <div className="lg:col-span-8 space-y-6">
+          
+          {/* TOP NAV & FILTERS */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex p-1 bg-slate-100 rounded-2xl w-fit">
+                <button onClick={() => setTab("active")} className={`px-4 py-1.5 rounded-xl text-sm font-bold transition-all ${tab === "active" ? "bg-white shadow-sm text-indigo-600" : "text-slate-500"}`}>To-Do</button>
+                <button onClick={() => setTab("recent")} className={`px-4 py-1.5 rounded-xl text-sm font-bold transition-all ${tab === "recent" ? "bg-white shadow-sm text-indigo-600" : "text-slate-500"}`}>Finished</button>
+            </div>
+            
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
+                <Button variant={filter === "All" ? "primary" : "outline"} size="sm" onClick={() => setFilter("All")}>All</Button>
+                {rooms.map(r => (
+                    <Button key={r} variant={filter === r ? "primary" : "outline"} size="sm" onClick={() => setFilter(r)}>{r}</Button>
+                ))}
+            </div>
           </div>
 
-          {/* MAIN PANEL */}
-          <div className="lg:col-span-8 space-y-6">
+          {/* CHORE ENTRY WITH DROPDOWNS */}
+          {tab === "active" && (
+            <GlassCard className="p-4 grid md:grid-cols-4 gap-3 border-dashed border-2 bg-indigo-50/30">
+                <Input placeholder="What needs doing?" value={newChore.name} onChange={e => setNewChore({...newChore, name: e.target.value})} />
+                
+                {/* Room Selection Dropdown */}
+                <select 
+                  className="bg-white ring-1 ring-slate-200 rounded-2xl px-3 text-sm outline-none cursor-pointer" 
+                  value={newChore.room} 
+                  onChange={e => setNewChore({...newChore, room: e.target.value})}
+                >
+                    {rooms.length === 0 && <option value="">Add a room first</option>}
+                    {rooms.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                
+                {/* Owner Selection Dropdown */}
+                <select 
+                  className="bg-white ring-1 ring-slate-200 rounded-2xl px-3 text-sm outline-none cursor-pointer" 
+                  value={newChore.assignedTo} 
+                  onChange={e => setNewChore({...newChore, assignedTo: e.target.value})}
+                >
+                    {OWNERS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+                
+                <Button onClick={addChore} className="w-full">{isEditing ? "Update" : "Add Chore"}</Button>
+            </GlassCard>
+          )}
+
+          {/* CHORE LIST */}
+          <div className="grid gap-4">
+            <AnimatePresence mode="popLayout">
+                {filteredChores.map((chore) => (
+                    <motion.div 
+                        key={chore.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                    >
+                        <GlassCard className={`p-5 flex items-center justify-between group ${chore.completed ? "bg-slate-50/50 opacity-60" : ""}`}>
+                            <div className="flex items-center gap-5">
+                                <button onClick={() => toggleComplete(chore)} className="transition-transform active:scale-90">
+                                    {chore.completed ? 
+                                        <CheckCircle2 size={28} className="text-emerald-500" /> : 
+                                        <Circle size={28} className="text-slate-300 hover:text-indigo-400" />
+                                    }
+                                </button>
+                                <div>
+                                    <h4 className={`font-bold text-lg ${chore.completed ? "line-through text-slate-400" : "text-slate-800"}`}>
+                                        {chore.name}
+                                    </h4>
+                                    <div className="flex items-center gap-3 mt-1 text-xs font-semibold text-slate-400">
+                                        <span className="flex items-center gap-1 uppercase tracking-wider text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-md">{chore.room}</span>
+                                        <span className="flex items-center gap-1"><UserIcon size={12}/> {chore.assignedTo}</span>
+                                        <span className="flex items-center gap-1"><Clock size={12}/> {formatCountdown(chore.dueDate)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button variant="outline" size="icon" onClick={() => {setIsEditing(chore.id); setNewChore(chore);}}><Pencil size={14}/></Button>
+                                <Button variant="destructive" size="icon" onClick={() => deleteDoc(doc(db, "chores", chore.id))}><Trash2 size={14}/></Button>
+                            </div>
+                        </GlassCard>
+                    </motion.div>
+                ))}
+            </AnimatePresence>
             
-            {/* COMPACT FILTERS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                <select onChange={(e) => setDateFilter(e.target.value)} className={`p-2 rounded-xl text-xs font-bold border ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white'}`}>
-                    <option value="All">Any Deadline</option>
-                    <option value="Today">Due Today</option>
-                    <option value="Week">Due This Week</option>
-                </select>
-                <select onChange={(e) => setOwnerFilter(e.target.value)} className={`p-2 rounded-xl text-xs font-bold border ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white'}`}>
-                    {owners.map(o => <option key={o} value={o}>{o === "All" ? "Every Owner" : o}</option>)}
-                </select>
-                <select onChange={(e) => setRoomFilter(e.target.value)} className={`p-2 rounded-xl text-xs font-bold border ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white'}`}>
-                    <option value="All">All Rooms</option>
-                    {rooms.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
-                </select>
-                <div className={`flex p-1 rounded-xl ${darkMode ? 'bg-slate-900' : 'bg-slate-200'}`}>
-                    <button onClick={() => setTab("active")} className={`flex-1 py-1 rounded-lg text-[10px] font-bold ${tab === "active" ? 'bg-indigo-600 text-white' : 'opacity-50'}`}>TO-DO</button>
-                    <button onClick={() => setTab("recent")} className={`flex-1 py-1 rounded-lg text-[10px] font-bold ${tab === "recent" ? 'bg-indigo-600 text-white' : 'opacity-50'}`}>DONE</button>
+            {filteredChores.length === 0 && (
+                <div className="text-center py-20">
+                    <div className="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <CheckCircle2 className="text-slate-300" size={32} />
+                    </div>
+                    <h3 className="text-slate-900 font-bold">All caught up!</h3>
+                    <p className="text-slate-400 text-sm">Enjoy your clean house.</p>
                 </div>
-            </div>
-
-            {/* CHORE ENTRY: Advanced Version */}
-            {tab === "active" && (
-              <GlassCard darkMode={darkMode} className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 border-dashed border-2">
-                  <Input placeholder="Chore name..." value={newChore.name} onChange={e => setNewChore({...newChore, name: e.target.value})} className="lg:col-span-2" />
-                  <Input list="room-list" placeholder="Room name..." value={newChore.room} onChange={e => setNewChore({...newChore, room: e.target.value})} />
-                  <datalist id="room-list">
-                    {rooms.map(r => <option key={r.id} value={r.name} />)}
-                  </datalist>
-                  <Input placeholder="Owner..." value={newChore.assignedTo} onChange={e => setNewChore({...newChore, assignedTo: e.target.value})} />
-                  <div className="flex items-center gap-2">
-                    <Input type="number" min="0" placeholder="Days" value={newChore.dueInDays} onChange={e => setNewChore({...newChore, dueInDays: e.target.value})} />
-                    <Button onClick={addChore} size="icon" className="shrink-0"><Plus size={20}/></Button>
-                  </div>
-              </GlassCard>
             )}
-
-            {/* LIST */}
-            <div className="space-y-3">
-              <AnimatePresence mode="popLayout">
-                  {filteredChores.map((chore) => (
-                      <motion.div key={chore.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                          <GlassCard darkMode={darkMode} className={`p-4 flex items-center justify-between group ${chore.completed ? "opacity-40" : ""}`}>
-                              <div className="flex items-center gap-4">
-                                  <button onClick={async () => {
-                                      const isNowDone = !chore.completed;
-                                      await updateDoc(doc(db, "chores", chore.id), { 
-                                          completed: isNowDone, 
-                                          dueDate: isNowDone ? nextDueDate(chore.dueInDays || 1) : chore.dueDate 
-                                      });
-                                  }}>
-                                      {chore.completed ? <CheckCircle2 className="text-emerald-500" size={24}/> : <Circle className="text-slate-400" size={24}/>}
-                                  </button>
-                                  <div>
-                                      <h4 className="font-bold">{chore.name}</h4>
-                                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[10px] font-bold uppercase tracking-widest opacity-60">
-                                          <span className="text-indigo-500">{chore.room}</span>
-                                          <span className="flex items-center gap-1"><UserIcon size={10}/> {chore.assignedTo || "Anyone"}</span>
-                                          <span className="flex items-center gap-1"><Calendar size={10}/> {formatCountdown(chore.dueDate)}</span>
-                                      </div>
-                                  </div>
-                              </div>
-                              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button onClick={() => {setIsEditingChore(chore.id); setNewChore(chore);}} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><Pencil size={14}/></button>
-                                  <button onClick={() => deleteDoc(doc(db, "chores", chore.id))} className="p-2 hover:bg-rose-100 dark:hover:bg-rose-900/30 text-rose-500 rounded-lg"><Trash2 size={14}/></button>
-                              </div>
-                          </GlassCard>
-                      </motion.div>
-                  ))}
-              </AnimatePresence>
-              {filteredChores.length === 0 && <div className="text-center py-20 opacity-20 font-black tracking-tighter text-4xl italic">CLEAR SKIES</div>}
-            </div>
           </div>
         </div>
       </div>
