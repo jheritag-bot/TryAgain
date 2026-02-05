@@ -1,18 +1,74 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Card, CardContent } from "./components/ui/card";
-import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
-import { Checkbox } from "./components/ui/checkbox";
 import { motion } from "framer-motion";
 import { Plus, Trash2, Pencil, Calendar, Lock } from "lucide-react";
 
 /***********************
- FIREBASE
+ LIGHTWEIGHT UI COMPONENTS
+ (Removes shadcn dependency so Vercel builds never fail)
 ***********************/
 
-// 🔴 IMPORTANT:
-// Replace this config with YOUR Firebase project config.
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-white rounded-2xl shadow-sm border ${className}`}>
+    {children}
+  </div>
+);
+
+const CardContent = ({ children, className = "" }) => (
+  <div className={`p-4 ${className}`}>{children}</div>
+);
+
+const Button = ({ children, variant = "default", size, className = "", ...props }) => {
+  const base = "rounded-xl px-3 py-2 flex items-center gap-2 transition";
+
+  const variants = {
+    default: "bg-black text-white hover:opacity-85",
+    outline: "border hover:bg-gray-100",
+    destructive: "bg-red-600 text-white hover:opacity-85",
+  };
+
+  const sizes = {
+    icon: "p-2",
+  };
+
+  return (
+    <button
+      className={`${base} ${variants[variant] || ""} ${sizes[size] || ""} ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+};
+
+const Input = (props) => (
+  <input
+    className="border rounded-xl px-3 py-2 w-full"
+    {...props}
+  />
+);
+
+const Select = ({ value, onChange, children }) => (
+  <select
+    className="border rounded-xl px-3 py-2 w-full"
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+  >
+    {children}
+  </select>
+);
+
+const Checkbox = ({ checked, onChange }) => (
+  <input
+    type="checkbox"
+    checked={checked}
+    onChange={onChange}
+    className="w-4 h-4"
+  />
+);
+
+/***********************
+ FIREBASE
+***********************/
 
 import { initializeApp } from "firebase/app";
 import {
@@ -83,7 +139,7 @@ function generateICS(chores) {
 }
 
 /***********************
- DEFAULT DATA (FIRST RUN ONLY)
+ DEFAULT DATA
 ***********************/
 
 const defaultRooms = ["Kitchen", "Living Room", "Bedrooms", "Bathrooms", "Basement"];
@@ -112,10 +168,6 @@ export default function HomeOpsUltra() {
     dueInDays: 7,
   });
 
-  /***********************
-   AUTH
-  ***********************/
-
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -129,10 +181,6 @@ export default function HomeOpsUltra() {
       alert(err.message);
     }
   };
-
-  /***********************
-   REALTIME SYNC
-  ***********************/
 
   useEffect(() => {
     if (!user) return;
@@ -162,10 +210,6 @@ export default function HomeOpsUltra() {
     };
   }, [user]);
 
-  /***********************
-   AUTO RESET
-  ***********************/
-
   useEffect(() => {
     const interval = setInterval(() => {
       chores.forEach(async c => {
@@ -182,10 +226,6 @@ export default function HomeOpsUltra() {
     return () => clearInterval(interval);
   }, [chores]);
 
-  /***********************
-   CRUD
-  ***********************/
-
   const addOrUpdateChore = async () => {
     if (!newChore.name.trim()) return;
 
@@ -201,7 +241,7 @@ export default function HomeOpsUltra() {
       });
     }
 
-    setNewChore({ name: "", room: rooms[0], assignedTo: "", dueInDays: 7 });
+    setNewChore({ name: "", room: rooms[0] || "Kitchen", assignedTo: "", dueInDays: 7 });
   };
 
   const toggleComplete = async (chore) => {
@@ -222,10 +262,6 @@ export default function HomeOpsUltra() {
     await deleteDoc(doc(db, "chores", id));
   };
 
-  /***********************
-   ROOM MANAGEMENT
-  ***********************/
-
   const addRoom = async () => {
     if (!newRoom.trim()) return;
     await setDoc(doc(db, "rooms", newRoom), { name: newRoom });
@@ -235,10 +271,6 @@ export default function HomeOpsUltra() {
   const removeRoom = async (room) => {
     await deleteDoc(doc(db, "rooms", room));
   };
-
-  /***********************
-   DERIVED DATA
-  ***********************/
 
   const recentCompleted = useMemo(() => {
     const cutoff = Date.now() - MS_PER_DAY;
@@ -257,10 +289,6 @@ export default function HomeOpsUltra() {
     return acc;
   }, {});
 
-  /***********************
-   CALENDAR
-  ***********************/
-
   const downloadCalendar = () => {
     const blob = new Blob([generateICS(chores)], { type: "text/calendar" });
     const url = URL.createObjectURL(blob);
@@ -270,15 +298,11 @@ export default function HomeOpsUltra() {
     a.click();
   };
 
-  /***********************
-   LOGIN
-  ***********************/
-
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <Card className="w-full max-w-md">
-          <CardContent className="p-6 space-y-4">
+          <CardContent className="space-y-4">
             <div className="flex items-center gap-2 text-xl font-semibold">
               <Lock size={18}/> Household Login
             </div>
@@ -306,10 +330,6 @@ export default function HomeOpsUltra() {
     );
   }
 
-  /***********************
-   UI
-  ***********************/
-
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
       <motion.div className="flex flex-col md:flex-row md:justify-between gap-3">
@@ -320,13 +340,11 @@ export default function HomeOpsUltra() {
         </Button>
       </motion.div>
 
-      {/* Tabs */}
       <div className="flex gap-2">
         <Button variant={tab === "active" ? "default" : "outline"} onClick={() => setTab("active")}>Active</Button>
         <Button variant={tab === "recent" ? "default" : "outline"} onClick={() => setTab("recent")}>Completed Recently</Button>
       </div>
 
-      {/* Room Filters */}
       <div className="flex gap-2 flex-wrap">
         {["All", ...rooms].map(r => (
           <Button key={r} variant={filter === r ? "default" : "outline"} onClick={() => setFilter(r)}>
@@ -335,10 +353,9 @@ export default function HomeOpsUltra() {
         ))}
       </div>
 
-      {/* Add/Edit Chore */}
       {tab === "active" && (
         <Card>
-          <CardContent className="p-4 grid md:grid-cols-5 gap-3">
+          <CardContent className="grid md:grid-cols-5 gap-3">
             <Input
               placeholder="Chore name"
               value={newChore.name}
@@ -347,14 +364,11 @@ export default function HomeOpsUltra() {
 
             <Select
               value={newChore.room}
-              onValueChange={(val) => setNewChore({ ...newChore, room: val })}
+              onChange={(val) => setNewChore({ ...newChore, room: val })}
             >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {rooms.map(room => (
-                  <SelectItem key={room} value={room}>{room}</SelectItem>
-                ))}
-              </SelectContent>
+              {rooms.map(room => (
+                <option key={room} value={room}>{room}</option>
+              ))}
             </Select>
 
             <Input
@@ -377,9 +391,8 @@ export default function HomeOpsUltra() {
         </Card>
       )}
 
-      {/* Room Admin */}
       <Card>
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="space-y-3">
           <h2 className="font-semibold">Room Management</h2>
 
           <div className="flex gap-2">
@@ -401,7 +414,6 @@ export default function HomeOpsUltra() {
         </CardContent>
       </Card>
 
-      {/* Chores */}
       <div className="grid gap-6">
         {Object.keys(groupedChores).map(room => (
           <div key={room}>
@@ -410,11 +422,11 @@ export default function HomeOpsUltra() {
             <div className="grid md:grid-cols-2 gap-4">
               {groupedChores[room].map(chore => (
                 <Card key={chore.id}>
-                  <CardContent className="flex items-center justify-between p-4">
+                  <CardContent className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <Checkbox
                         checked={chore.completed}
-                        onCheckedChange={() => toggleComplete(chore)}
+                        onChange={() => toggleComplete(chore)}
                       />
 
                       <div>
