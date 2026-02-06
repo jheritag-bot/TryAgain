@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  Plus, Trash2, Pencil, Calendar, Lock, LogOut, 
-  CheckCircle2, Circle, Moon, Sun, Clock, User as UserIcon, Settings, RefreshCw
+  Plus, Trash2, Pencil, Lock, LogOut, 
+  CheckCircle2, Circle, User as UserIcon, Settings, Repeat, CalendarClock
 } from "lucide-react";
 
 /***********************
@@ -36,7 +36,7 @@ const Button = ({ children, variant = "primary", size = "md", className = "", ..
   return (
     <button 
       className={`inline-flex items-center justify-center gap-2 font-semibold rounded-2xl transition-all active:scale-95 disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`}
-      ...props
+      {...props}
     >
       {children}
     </button>
@@ -82,6 +82,7 @@ const formatCountdown = (ts) => {
   return days > 0 ? `${days}d left` : "Due today";
 };
 
+// Hardcoded Owners
 const OWNERS = ["John", "Jennifer"];
 
 export default function HomeOpsUltra() {
@@ -95,12 +96,14 @@ export default function HomeOpsUltra() {
   const [newRoom, setNewRoom] = useState("");
   const [isEditing, setIsEditing] = useState(null);
   
+  // Default values set to hardcoded Owners
+  // NEW: Added 'isRecurring' field defaulting to true
   const [newChore, setNewChore] = useState({ 
     name: "", 
     room: "", 
     assignedTo: OWNERS[0], 
     dueInDays: 7,
-    isRecurring: false 
+    isRecurring: true 
   });
 
   useEffect(() => {
@@ -111,8 +114,9 @@ export default function HomeOpsUltra() {
     if (!user) return;
     const qRooms = query(collection(db, "rooms"), where("userId", "==", user.uid));
     const unsubRooms = onSnapshot(qRooms, (snap) => {
-      const r = snap.docs.map(d => ({ id: d.id, name: d.data().name }));
+      const r = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setRooms(r);
+      // Auto-select the first room for new chores if one isn't selected
       if (r.length > 0 && !newChore.room) setNewChore(p => ({ ...p, room: r[0].name }));
     });
 
@@ -127,38 +131,62 @@ export default function HomeOpsUltra() {
   const toggleComplete = async (chore) => {
     const isNowDone = !chore.completed;
     
-    // Logic for recurring tasks: If checked and recurring, reset the due date
-    const updateData = {
-      completed: chore.isRecurring ? false : isNowDone,
+    // Prepare update payload
+    let updatePayload = {
+      completed: isNowDone,
       completedAt: isNowDone ? Date.now() : null,
-      dueDate: (chore.isRecurring && isNowDone) 
-        ? nextDueDate(parseInt(chore.dueInDays) || 7) 
-        : chore.dueDate
     };
 
-    await updateDoc(doc(db, "chores", chore.id), updateData);
+    // Logic for Recurring vs One-Time
+    if (isNowDone) {
+      // If marking as done...
+      if (chore.isRecurring) {
+        // If it's recurring, set a new due date
+        updatePayload.dueDate = nextDueDate(chore.dueInDays);
+      } 
+      // If it's one-time, we don't touch dueDate, it stays in the past
+    } else {
+      // If un-marking (undo), we might want to restore the previous due date logic?
+      // For simplicity, we'll just keep the current dueDate or reset it if needed.
+      // Here we just toggle status.
+    }
+
+    await updateDoc(doc(db, "chores", chore.id), updatePayload);
   };
 
   const addChore = async () => {
     if (!newChore.name.trim() || !newChore.room) return;
+    
     const payload = { 
       ...newChore, 
       userId: user.uid, 
       completed: false, 
-      dueDate: nextDueDate(parseInt(newChore.dueInDays) || 7) 
+      dueDate: nextDueDate(newChore.dueInDays) 
     };
-    
+
     if (isEditing) {
         await updateDoc(doc(db, "chores", isEditing), payload);
         setIsEditing(null);
     } else {
         await addDoc(collection(db, "chores"), payload);
     }
-    setNewChore({ ...newChore, name: "" });
+    
+    // Reset form but keep room and assignedTo preferences
+    setNewChore({ 
+      name: "", 
+      room: newChore.room, 
+      assignedTo: newChore.assignedTo, 
+      dueInDays: newChore.dueInDays,
+      isRecurring: newChore.isRecurring 
+    });
   };
 
+  // NEW: Delete Room Function
   const deleteRoom = async (roomId) => {
-    await deleteDoc(doc(db, "rooms", roomId));
+    if (window.confirm("Delete this room? Chores assigned to this room will remain but won't be filterable by room name.")) {
+      await deleteDoc(doc(db, "rooms", roomId));
+      if (filter === rooms.find(r => r.id === roomId)?.name) setFilter("All");
+    }
   };
 
   const completionRate = chores.length ? Math.round((chores.filter(c => c.completed).length / chores.length) * 100) : 0;
@@ -207,6 +235,7 @@ export default function HomeOpsUltra() {
             </div>
           </GlassCard>
 
+          {/* Manage Rooms Section */}
           <GlassCard className="p-6">
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <Settings size={14}/> Manage Rooms
@@ -215,18 +244,22 @@ export default function HomeOpsUltra() {
                 <Input placeholder="Room Name" value={newRoom} onChange={e => setNewRoom(e.target.value)} className="text-sm" />
                 <Button variant="secondary" onClick={async () => {
                     if (!newRoom.trim()) return;
-                    await addDoc(collection(db, "rooms"), { name: newRoom, userId: user.uid });
+                    await setDoc(doc(collection(db, "rooms")), { name: newRoom, userId: user.uid });
                     setNewRoom("");
                 }}><Plus size={18}/></Button>
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
                 {rooms.map(r => (
-                    <div key={r.id} className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl group">
-                      <span className="text-xs font-medium text-slate-600">{r.name}</span>
-                      <button onClick={() => deleteRoom(r.id)} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
-                        <Trash2 size={14} />
+                    <span key={r.id} className="group flex items-center gap-2 pl-3 pr-1 py-1 bg-slate-50 border border-slate-100 rounded-full text-xs font-medium text-slate-600 hover:border-rose-200 hover:bg-rose-50 transition-colors">
+                      {r.name}
+                      <button 
+                        onClick={() => deleteRoom(r.id)}
+                        className="p-1 rounded-full hover:bg-rose-200 text-slate-400 hover:text-rose-600 transition-colors"
+                        title="Delete Room"
+                      >
+                        <Trash2 size={10} />
                       </button>
-                    </div>
+                    </span>
                 ))}
             </div>
           </GlassCard>
@@ -239,48 +272,74 @@ export default function HomeOpsUltra() {
         {/* MAIN DASHBOARD */}
         <div className="lg:col-span-8 space-y-6">
           
-          {/* TOP NAV & ROOM FILTER DROPDOWN */}
+          {/* TOP NAV & FILTERS */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex p-1 bg-slate-100 rounded-2xl w-fit">
                 <button onClick={() => setTab("active")} className={`px-4 py-1.5 rounded-xl text-sm font-bold transition-all ${tab === "active" ? "bg-white shadow-sm text-indigo-600" : "text-slate-500"}`}>To-Do</button>
                 <button onClick={() => setTab("recent")} className={`px-4 py-1.5 rounded-xl text-sm font-bold transition-all ${tab === "recent" ? "bg-white shadow-sm text-indigo-600" : "text-slate-500"}`}>Finished</button>
             </div>
             
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Filter:</span>
+            {/* NEW: Room Filter Dropdown */}
+            <div className="relative">
               <select 
-                className="bg-white ring-1 ring-slate-200 rounded-xl px-4 py-2 text-sm font-bold outline-none text-indigo-600 shadow-sm"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
+                className="appearance-none bg-white border border-slate-200 text-slate-700 py-2 pl-4 pr-10 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-semibold cursor-pointer shadow-sm"
               >
                 <option value="All">All Rooms</option>
-                {rooms.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+                {rooms.map(r => (
+                  <option key={r.id} value={r.name}>{r.name}</option>
+                ))}
               </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+              </div>
             </div>
           </div>
 
-          {/* CHORE ENTRY */}
+          {/* CHORE ENTRY WITH DROPDOWNS */}
           {tab === "active" && (
-            <GlassCard className="p-4 grid md:grid-cols-2 lg:grid-cols-3 gap-3 border-dashed border-2 bg-indigo-50/30">
-                <Input placeholder="What needs doing?" value={newChore.name} onChange={e => setNewChore({...newChore, name: e.target.value})} className="lg:col-span-2" />
+            <GlassCard className="p-4 grid md:grid-cols-6 gap-3 border-dashed border-2 bg-indigo-50/30 items-end">
+                <div className="md:col-span-2">
+                  <Input placeholder="What needs doing?" value={newChore.name} onChange={e => setNewChore({...newChore, name: e.target.value})} />
+                </div>
                 
-                <select className="bg-white ring-1 ring-slate-200 rounded-2xl px-3 py-2 text-sm outline-none" value={newChore.room} onChange={e => setNewChore({...newChore, room: e.target.value})}>
+                {/* Room Selection Dropdown */}
+                <select 
+                  className="bg-white ring-1 ring-slate-200 rounded-2xl px-3 py-2.5 text-sm outline-none cursor-pointer h-[42px]" 
+                  value={newChore.room} 
+                  onChange={e => setNewChore({...newChore, room: e.target.value})}
+                >
+                    {rooms.length === 0 && <option value="">Add a room first</option>}
                     {rooms.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
                 </select>
-
-                <select className="bg-white ring-1 ring-slate-200 rounded-2xl px-3 py-2 text-sm outline-none" value={newChore.assignedTo} onChange={e => setNewChore({...newChore, assignedTo: e.target.value})}>
+                
+                {/* Owner Selection Dropdown */}
+                <select 
+                  className="bg-white ring-1 ring-slate-200 rounded-2xl px-3 py-2.5 text-sm outline-none cursor-pointer h-[42px]" 
+                  value={newChore.assignedTo} 
+                  onChange={e => setNewChore({...newChore, assignedTo: e.target.value})}
+                >
                     {OWNERS.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
 
-                <select className="bg-white ring-1 ring-slate-200 rounded-2xl px-3 py-2 text-sm outline-none font-medium" value={newChore.isRecurring ? "recurring" : "one-time"} onChange={e => setNewChore({...newChore, isRecurring: e.target.value === "recurring"})}>
-                    <option value="one-time">One-time Task</option>
-                    <option value="recurring">Recurring Every...</option>
-                </select>
-
-                <div className="flex gap-2">
-                  <Input type="number" placeholder="Days" value={newChore.dueInDays} onChange={e => setNewChore({...newChore, dueInDays: e.target.value})} />
-                  <Button onClick={addChore} className="whitespace-nowrap flex-grow">{isEditing ? "Update" : "Add Chore"}</Button>
+                {/* NEW: Recurring Toggle */}
+                <div className="flex items-center gap-2 h-[42px] px-2">
+                  <button
+                    onClick={() => setNewChore({...newChore, isRecurring: !newChore.isRecurring})}
+                    className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all border ${
+                      newChore.isRecurring 
+                        ? "bg-indigo-100 text-indigo-700 border-indigo-200" 
+                        : "bg-slate-100 text-slate-500 border-slate-200"
+                    }`}
+                    title={newChore.isRecurring ? "Repeats when done" : "One time only"}
+                  >
+                    {newChore.isRecurring ? <Repeat size={12}/> : <CalendarClock size={12}/>}
+                    {newChore.isRecurring ? "Recurring" : "One-Time"}
+                  </button>
                 </div>
+                
+                <Button onClick={addChore} className="w-full h-[42px]">{isEditing ? "Update" : "Add Chore"}</Button>
             </GlassCard>
           )}
 
@@ -304,10 +363,15 @@ export default function HomeOpsUltra() {
                                     }
                                 </button>
                                 <div>
-                                    <h4 className={`font-bold text-lg flex items-center gap-2 ${chore.completed ? "line-through text-slate-400" : "text-slate-800"}`}>
-                                        {chore.name}
-                                        {chore.isRecurring && <RefreshCw size={14} className="text-indigo-400" />}
-                                    </h4>
+                                    <div className="flex items-center gap-2">
+                                      <h4 className={`font-bold text-lg ${chore.completed ? "line-through text-slate-400" : "text-slate-800"}`}>
+                                          {chore.name}
+                                      </h4>
+                                      {/* Display Recurring Icon if applicable */}
+                                      {chore.isRecurring && (
+                                        <Repeat size={14} className="text-indigo-400" title="Recurring Task"/>
+                                      )}
+                                    </div>
                                     <div className="flex items-center gap-3 mt-1 text-xs font-semibold text-slate-400">
                                         <span className="flex items-center gap-1 uppercase tracking-wider text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-md">{chore.room}</span>
                                         <span className="flex items-center gap-1"><UserIcon size={12}/> {chore.assignedTo}</span>
@@ -316,7 +380,16 @@ export default function HomeOpsUltra() {
                                 </div>
                             </div>
                             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button variant="outline" size="icon" onClick={() => {setIsEditing(chore.id); setNewChore(chore);}}><Pencil size={14}/></Button>
+                                <Button variant="outline" size="icon" onClick={() => {
+                                  setIsEditing(chore.id); 
+                                  setNewChore({
+                                    name: chore.name,
+                                    room: chore.room,
+                                    assignedTo: chore.assignedTo,
+                                    dueInDays: chore.dueInDays,
+                                    isRecurring: chore.isRecurring
+                                  });
+                                }}><Pencil size={14}/></Button>
                                 <Button variant="destructive" size="icon" onClick={() => deleteDoc(doc(db, "chores", chore.id))}><Trash2 size={14}/></Button>
                             </div>
                         </GlassCard>
