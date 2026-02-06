@@ -36,7 +36,7 @@ const Button = ({ children, variant = "primary", size = "md", className = "", ..
   return (
     <button 
       className={`inline-flex items-center justify-center gap-2 font-semibold rounded-2xl transition-all active:scale-95 disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`}
-      ...props
+      {...props}
     >
       {children}
     </button>
